@@ -1,0 +1,21 @@
+# Tray menu
+menu.show: "Show Window"
+menu.quit: "Quit"
+menu.service_control: "Service Control"
+menu.stop_service: "Stop Service"
+menu.start_service: "Start Service"
+
+# App logs
+dshdesktop.start: "DSH Desktop started"
+tray.hide: "Window hidden to system tray"
+log.tray_created: "System tray created"
+log.user_quit: "User chose to quit the app"
+log.port_busy: "Port %{port} is already in use, service may already be running"
+log.start_failed: "Failed to launch DSH service: %{err}"
+log.started: "DSH service started on %{host}:%{port}"
+log.not_running: "DSH service is not running, nothing to stop"
+log.kill_failed: "Failed to kill DSH service (PID %{pid}): %{err}"
+log.taskkill_failed: "taskkill failed to terminate DSH service (PID %{pid})"
+log.stopped: "DSH service stopped (PID %{pid})"
+log.cleaned: "Cleaned up DSH service before exit (PID %{pid})"
+log.cleanup_nothing: "DSH service not running on exit, nothing to clean up"

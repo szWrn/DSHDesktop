@@ -1,0 +1,21 @@
+# 托盘菜单
+menu.show: "显示窗口"
+menu.quit: "退出"
+menu.service_control: "服务控制"
+menu.stop_service: "停止服务"
+menu.start_service: "启动服务"
+
+# 应用日志
+dshdesktop.start: "DSH Desktop 启动"
+tray.hide: "窗口已隐藏到系统托盘"
+log.tray_created: "系统托盘已创建"
+log.user_quit: "用户选择退出应用"
+log.port_busy: "端口 %{port} 已被占用，服务可能已在运行"
+log.start_failed: "启动 DSH 服务失败: %{err}"
+log.started: "DSH 服务已启动 %{host}:%{port}"
+log.not_running: "DSH 服务未在运行，无需停止"
+log.kill_failed: "杀掉 DSH 服务 (PID %{pid}) 失败: %{err}"
+log.taskkill_failed: "taskkill 无法终止 DSH 服务 (PID %{pid})"
+log.stopped: "DSH 服务已停止 (PID %{pid})"
+log.cleaned: "退出前已清理 DSH 服务 (PID %{pid})"
+log.cleanup_nothing: "退出时 DSH 服务未在运行，无需清理"
