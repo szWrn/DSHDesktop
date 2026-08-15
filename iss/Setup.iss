@@ -32,12 +32,12 @@ ArchitecturesAllowed=x64compatible
 ; the 64-bit view of the registry.
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
-LicenseFile=D:\Projects\DSHDesktop\LICENSE.txt
+LicenseFile=..\LICENSE.txt
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
-OutputDir=D:\Projects\DSHDesktop\src-tauri\target\release\installer
+OutputDir=..\src-tauri\target\release\installer
 OutputBaseFilename=dsh-desktop_1.0.0_win_x64
-SetupIconFile=D:\Projects\DSHDesktop\src-tauri\icons\icon.ico
+SetupIconFile=..\src-tauri\icons\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 
@@ -49,7 +49,7 @@ Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.i
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\Projects\DSHDesktop\src-tauri\target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src-tauri\target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
