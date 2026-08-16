@@ -13,8 +13,11 @@ use tauri::{
     Manager, WindowEvent,
 };
 
-// 为 true 表示用户通过托盘「退出」真正退出，此时 CloseRequested 不再拦截
 static QUITTING: AtomicBool = AtomicBool::new(false);
+
+// DSH 服务监听地址与端口
+const DSH_HOST: &str = "127.0.0.1";
+const DSH_PORT: u16 = 3080;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -41,16 +44,13 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-// ===== DSH 服务启停（同步版，供托盘菜单等同步上下文调用）=====
+// ===== DSH 服务启停 同步=====
 
 // 同步启动 dsh 服务
 fn start_dsh_service_sync() -> Result<String, String> {
-    let host = "127.0.0.1";
-    let port = 3080u16;
-
-    if !is_port_available(host, port) {
-        warn!("{}", t!("log.port_busy", port = port));
-        return Err(format!("Port {} is already in use on {}.", port, host));
+    if !is_port_available(DSH_HOST, DSH_PORT) {
+        warn!("{}", t!("log.port_busy", port = DSH_PORT));
+        return Err(format!("Port {} is already in use on {}.", DSH_PORT, DSH_HOST));
     }
 
     silent_command(npx_bin())
@@ -61,41 +61,30 @@ fn start_dsh_service_sync() -> Result<String, String> {
             format!("Failed to launch DSH service: {}", err)
         })?;
 
-    info!("{}", t!("log.started", host = host, port = port));
-    Ok(format!("DSH service started successfully on {}:{}.", host, port))
+    info!("{}", t!("log.started", host = DSH_HOST, port = DSH_PORT));
+    Ok(format!("DSH service started successfully on {}:{}.", DSH_HOST, DSH_PORT))
 }
 
-// 同步杀掉 dsh 服务。返回 Ok(None) 表示本来就没在跑，Ok(Some(pid)) 表示已杀掉对应进程。
+// 同步关闭 dsh 服务
 fn kill_dsh_service_sync() -> Result<Option<u32>, String> {
-    let host = "127.0.0.1";
-    let port = 3080u16;
-
     // 端口空闲 = 没有 dsh 在运行
-    if is_port_available(host, port) {
+    if is_port_available(DSH_HOST, DSH_PORT) {
         info!("{}", t!("log.not_running"));
         return Ok(None);
     }
 
-    let pid = find_pid_by_port(port)?;
+    let pid = find_pid_by_port(DSH_PORT)?;
 
-    let status = silent_command("taskkill")
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .status()
-        .map_err(|err| {
-            error!("{}", t!("log.kill_failed", pid = pid, err = err));
-            format!("Failed to kill DSH service (PID {}): {}", pid, err)
-        })?;
-
-    if !status.success() {
-        error!("{}", t!("log.taskkill_failed", pid = pid));
-        return Err(format!("taskkill failed to terminate DSH service (PID {}).", pid));
-    }
+    kill_process_by_pid(pid).map_err(|err| {
+        error!("{}", t!("log.kill_failed", pid = pid, err = err));
+        err
+    })?;
 
     info!("{}", t!("log.stopped", pid = pid));
     Ok(Some(pid))
 }
 
-// ===== 异步命令（供前端 JS 通过 invoke 调用，内部复用同步版）=====
+// ===== DSH 服务启停 异步=====
 
 #[tauri::command]
 async fn start_dsh_service() -> Result<String, String> {
@@ -104,18 +93,15 @@ async fn start_dsh_service() -> Result<String, String> {
 
 #[tauri::command]
 async fn kill_dsh_service() -> Result<String, String> {
-    let host = "127.0.0.1";
-    let port = 3080u16;
-
     match kill_dsh_service_sync()? {
-        None => Ok(format!("DSH service is not running on {}:{}.", host, port)),
+        None => Ok(format!("DSH service is not running on {}:{}.", DSH_HOST, DSH_PORT)),
         Some(pid) => {
             // 强杀后端口可能延迟释放，轮询核对占用是否解除
             for _ in 0..30 {
-                if is_port_available(host, port) {
+                if is_port_available(DSH_HOST, DSH_PORT) {
                     return Ok(format!(
                         "DSH service (PID {}) killed, port {}:{} is free.",
-                        pid, host, port
+                        pid, DSH_HOST, DSH_PORT
                     ));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -123,18 +109,21 @@ async fn kill_dsh_service() -> Result<String, String> {
 
             Err(format!(
                 "DSH service (PID {}) was killed, but port {}:{} is still in use.",
-                pid, host, port
+                pid, DSH_HOST, DSH_PORT
             ))
         }
     }
 }
 
-// 
+// 获取DSH服务url
+#[tauri::command]
+async fn get_dsh_url() -> Result<String, String> {
+  Ok(format!("http://{}:{}", DSH_HOST, DSH_PORT))
+}
+
 #[tauri::command]
 fn is_dsh_service_running() -> bool {
-    let host = "127.0.0.1";
-    let port = 3080u16;
-    return !is_port_available(host, port);
+    !is_port_available(DSH_HOST, DSH_PORT)
 }
 
 fn is_port_available(host: &str, port: u16) -> bool {
@@ -151,47 +140,94 @@ fn npx_bin() -> &'static str {
 }
 
 fn find_pid_by_port(port: u16) -> Result<u32, String> {
-    let output = silent_command("netstat")
-        .args(["-ano", "-p", "tcp"])
-        .output()
-        .map_err(|err| format!("Failed to inspect network: {}", err))?;
+    #[cfg(windows)]
+    {
+        let output = silent_command("netstat")
+            .args(["-ano", "-p", "tcp"])
+            .output()
+            .map_err(|err| format!("Failed to inspect network: {}", err))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let port_suffix = format!(":{}", port);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let port_suffix = format!(":{}", port);
 
-    for line in stdout.lines() {
-        // Windows netstat -ano 列: Proto, Local Address, Foreign Address, State, PID
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 5 {
-            continue;
+        for line in stdout.lines() {
+            // Windows netstat -ano 列: Proto, Local Address, Foreign Address, State, PID
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() < 5 {
+                continue;
+            }
+
+            let proto = parts[0];
+            let local_addr = parts[1];
+            let state = parts[3];
+            let pid = parts[4];
+
+            if proto.eq_ignore_ascii_case("TCP")
+                && local_addr.ends_with(&port_suffix)
+                && state.eq_ignore_ascii_case("LISTENING")
+            {
+                return pid
+                    .parse::<u32>()
+                    .map_err(|e| format!("Invalid PID in netstat output ({}): {}", pid, e));
+            }
         }
 
-        let proto = parts[0];
-        let local_addr = parts[1];
-        let state = parts[3];
-        let pid = parts[4];
+        Err(format!("No process is listening on port {}.", port))
+    }
 
-        if proto.eq_ignore_ascii_case("TCP")
-            && local_addr.ends_with(&port_suffix)
-            && state.eq_ignore_ascii_case("LISTENING")
-        {
-            return pid
-                .parse::<u32>()
-                .map_err(|e| format!("Invalid PID in netstat output ({}): {}", pid, e));
+    #[cfg(unix)]
+    {
+        // lsof -nP -iTCP:<port> -sTCP:LISTEN -t 只输出监听该端口的 PID
+        let port_arg = format!("-iTCP:{}", port);
+        let output = silent_command("lsof")
+            .args(["-nP", port_arg.as_str(), "-sTCP:LISTEN", "-t"])
+            .output()
+            .map_err(|err| format!("Failed to inspect network: {}", err))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout
+            .lines()
+            .find_map(|line| line.trim().parse::<u32>().ok())
+            .ok_or_else(|| format!("No process is listening on port {}.", port))
+    }
+}
+
+// 按 PID 强制结束进程：Windows 用 taskkill /T /F（连带子进程），Unix 用 kill -9。
+fn kill_process_by_pid(pid: u32) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let status = silent_command("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status()
+            .map_err(|err| format!("Failed to kill DSH service (PID {}): {}", pid, err))?;
+        if !status.success() {
+            return Err(format!("taskkill failed to terminate DSH service (PID {}).", pid));
         }
     }
 
-    Err(format!("No process is listening on port {}.", port))
+    #[cfg(unix)]
+    {
+        let status = silent_command("kill")
+            .args(["-9", &pid.to_string()])
+            .status()
+            .map_err(|err| format!("Failed to kill DSH service (PID {}): {}", pid, err))?;
+        if !status.success() {
+            return Err(format!("kill failed to terminate DSH service (PID {}).", pid));
+        }
+    }
+
+    Ok(())
 }
 
 // 同步清理 dsh 进程（退出前调用）。on_menu_event 是同步上下文，不能用 async 的 kill_dsh_service
 fn cleanup_dsh_process() {
-    match find_pid_by_port(3080) {
+    match find_pid_by_port(DSH_PORT) {
         Ok(pid) => {
-            let _ = silent_command("taskkill")
-                .args(["/PID", &pid.to_string(), "/T", "/F"])
-                .status();
-            info!("{}", t!("log.cleaned", pid = pid));
+            if let Err(err) = kill_process_by_pid(pid) {
+                error!("{}", t!("log.kill_failed", pid = pid, err = err));
+            } else {
+                info!("{}", t!("log.cleaned", pid = pid));
+            }
         }
         Err(_) => {
             info!("{}", t!("log.cleanup_nothing"));
@@ -307,7 +343,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, start_dsh_service, kill_dsh_service, is_dsh_service_running])
+        .invoke_handler(tauri::generate_handler![
+            greet, 
+            start_dsh_service, 
+            kill_dsh_service, 
+            is_dsh_service_running, 
+            get_dsh_url
+            ])
         .setup(|app| {
             setup_tray(app)?;
             Ok(())

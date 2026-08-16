@@ -4,7 +4,7 @@
 
 [中文文档](./README.zh-CN.md)
 
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/szWrn/DSHDesktop)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-2ea44f)](https://github.com/szWrn/DSHDesktop)
 [![Tauri](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=black)](https://tauri.app)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vue.js&logoColor=white)](https://vuejs.org)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust&logoColor=white)](https://www.rust-lang.org)
@@ -22,16 +22,13 @@ DSH Desktop is an unofficial, third-party desktop client built with Tauri 2 + Vu
 - **Health monitoring**: A status dot reflects the service state in real time, and unexpected crashes are detected.
 - **System locale**: Follows your system language to switch between Chinese and English UI.
 - **Frameless window**: Ships with its own minimize / maximize / close buttons for a cleaner look.
+- **Cross-platform**: Runs on Windows, macOS, and Linux.
 
 ---
 
 ## Screenshot
 
-> Please add a screenshot or GIF (e.g. `docs/screenshot.png`) showing the full flow: start → service online → embedded DSH UI.
-
-<!--
-![DSH Desktop](docs/screenshot.png)
--->
+![DSH Desktop screenshot](imgs/screenshot.gif)
 
 ---
 
@@ -39,11 +36,10 @@ DSH Desktop is an unofficial, third-party desktop client built with Tauri 2 + Vu
 
 ### Prerequisites
 
-- **Windows** (currently Windows-only)
+- **Windows**, **macOS**, or **Linux**
 - **Node.js** (`npx` must be available on PATH; on first start the app pulls `@deepseek-ai/dsh` via `npx`, so a network connection is required)
+- **macOS / Linux**: `lsof` is required to locate the DSH process (preinstalled on macOS; on Debian/Ubuntu install it with `sudo apt install lsof`)
 - Ensure `127.0.0.1:3080` is free
-
-> **Platform note**: The backend process management currently relies on `taskkill` / `netstat`, so only Windows is supported. macOS / Linux support is planned — contributions welcome.
 
 ### Use the binary
 
@@ -75,24 +71,10 @@ npm run tauri build
 
 ## How it works
 
-```
-┌─────────────────────────────────────────────┐
-│                 DSH Desktop                 │
-│  ┌─────────────┐   invoke    ┌───────────┐  │
-│  │  Vue 3 UI   │ ──────────▶ │ Rust      │  │
-│  │  (iframe)   │ ◀────────── │ backend   │  │
-│  └─────────────┘ state/cmds  └─────┬─────┘  │
-│        ▲                           │ spawn  │
-│        │ embeds                   ▼        │
-│  ┌─────────────────────────────────────┐    │
-│  │  DSH web service (127.0.0.1:3080)   │    │
-│  │  npx --yes @deepseek-ai/dsh web     │    │
-│  └─────────────────────────────────────┘    │
-└─────────────────────────────────────────────┘
-```
+![DSH Desktop architecture](imgs/structure.png)
 
 - **Start**: checks whether `127.0.0.1:3080` is free → silently runs `npx --yes @deepseek-ai/dsh web` (no console window on Windows) → polls until the port is ready.
-- **Stop**: finds the process listening on port 3080 via `netstat -ano` and terminates it with `taskkill`.
+- **Stop**: finds the process listening on port 3080 (`netstat -ano` on Windows, `lsof` on macOS/Linux) and terminates it (`taskkill` on Windows, `kill` on macOS/Linux).
 - **Status**: the UI calls `is_dsh_service_running` every 3 seconds to drive the status dot and tray menu text.
 
 ---
@@ -106,7 +88,7 @@ A DSH service (or another process) is already running. Free the port first, or c
 Make sure Node.js is installed and `npx` works (verify with `npx --version`), and stay online so `@deepseek-ai/dsh` can be fetched.
 
 **Q: Does it support macOS / Linux?**
-Not yet. The current version is Windows-only; cross-platform support is on the roadmap.
+Yes — DSH Desktop runs on Windows, macOS, and Linux. On macOS/Linux, make sure `lsof` is installed.
 
 **Q: Is this an official app?**
 No. DSH Desktop is a third-party community project and is not affiliated with DeepSeek.
@@ -115,12 +97,12 @@ No. DSH Desktop is a third-party community project and is not affiliated with De
 
 ## Tech Stack
 
-| Layer       | Technology                                          |
-| ----------- | --------------------------------------------------- |
-| Desktop     | [Tauri 2](https://tauri.app) (Rust)                 |
-| Frontend    | [Vue 3](https://vuejs.org) + [Vite](https://vitejs.dev) |
-| i18n        | `rust-i18n` + Vue frontend strings                  |
-| Process     | Rust `std::process` + `netstat` / `taskkill`        |
+| Layer       | Technology                                                                    |
+| ----------- | ----------------------------------------------------------------------------- |
+| Desktop     | [Tauri 2](https://tauri.app) (Rust)                                           |
+| Frontend    | [Vue 3](https://vuejs.org) + [Vite](https://vitejs.dev)                       |
+| i18n        | `rust-i18n` + Vue frontend strings                                            |
+| Process     | Rust `std::process` + `netstat`/`taskkill` (Windows) · `lsof`/`kill` (macOS/Linux) |
 
 ---
 
@@ -128,7 +110,7 @@ No. DSH Desktop is a third-party community project and is not affiliated with De
 
 Issues and pull requests are welcome. Read the build steps above and verify `npm run tauri dev` works locally before submitting.
 
-Good first issues: macOS / Linux process-management port, installer icon & metadata polish, automated release CI.
+Good first issues: automated release CI, in-app auto-update, installer icon & metadata polish.
 
 ---
 

@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import flashIcon from "./assets/flash.svg";
 import { useI18n } from "./i18n";
 
+// i18n
 const { t } = useI18n();
 
 const status = ref("");  // 状态消息
@@ -12,6 +13,8 @@ const statusVisible = ref(false);  // 状态可见性(用于淡入淡出动画)
 
 const loading = ref(false);
 const running = ref(false);
+
+const dsh_url = ref("");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -25,11 +28,17 @@ function showStatus(msg, duration = 2500) {
 
 onMounted(() => {
   showStatus(t("status.starting"));
+  getDSHUrl();
   startDSHService();
   startHealthPolling();
 });
 
-// 每隔几秒刷新服务运行状态，驱动状态圆点并检测服务崩溃
+// 获取DSH的URL地址
+async function getDSHUrl() {
+  dsh_url.value = await invoke("get_dsh_url");
+}
+
+// 定期检查 DSH 服务运行状态
 function startHealthPolling(interval = 3000) {
   setInterval(async () => {
     try {
@@ -52,6 +61,7 @@ async function startDSHService() {
   }
 }
 
+// 等待服务启动
 async function waitUntilRunning(timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -112,7 +122,7 @@ const close = () => appWindow.close();
     <div v-if="!running" class="launcher">
       <img :src="flashIcon" class="flash-icon" alt="DSH" />
     </div>
-    <iframe v-else src="http://127.0.0.1:3080" class="dsh-frame" />
+    <iframe v-else :src="dsh_url" class="dsh-frame" />
   </main>
 </template>
 
