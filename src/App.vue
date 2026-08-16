@@ -12,7 +12,7 @@ const status = ref("");  // 状态消息
 const statusVisible = ref(false);  // 状态可见性(用于淡入淡出动画)
 
 const loading = ref(false);
-const running = ref(false);
+const running = ref(0);  // 0=未运行 1=运行 -1=系统检测不通过
 
 const dsh_url = ref("");
 
@@ -23,6 +23,7 @@ function showStatus(msg, duration = 2500) {
   status.value = msg;
   statusVisible.value = true;
   clearTimeout(statusTimer);
+  if (duration < 0) return;
   statusTimer = setTimeout(() => (statusVisible.value = false), duration);
 }
 
@@ -42,16 +43,64 @@ async function getDSHUrl() {
 function startHealthPolling(interval = 3000) {
   setInterval(async () => {
     try {
-      running.value = await invoke("is_dsh_service_running");
+      const isRunning = await invoke("is_dsh_service_running");
+      // 系统检测不通过(-1)时保持不变，不被轮询覆盖
+      if (running.value !== -1) {
+        running.value = isRunning ? 1 : 0;
+      }
     } catch {
-      running.value = false;
+      if (running.value !== -1) {
+        running.value = 0;
+      }
     }
   }, interval);
+}
+
+// 系统检测：返回是否通过；不通过时置 running = -1
+async function syscheck() {
+  const ok = await invoke("syscheck");
+  if (ok) {
+    if (running.value === -1) running.value = 0;
+  } else {
+    running.value = -1;
+    showStatus(t("status.syscheck_failed"), -1);
+  }
+  return ok;
+}
+
+async function syscheck_and_fix() {
+  const ok = await invoke("syscheck_and_fix");
+  const sys_ok = await invoke("syscheck"); // 重新进行系统检查
+  if (ok) {
+    if (sys_ok) {
+      if (running.value === -1) running.value = 0;
+    } else {
+      showStatus(t("status.syscheck_failed"), -1);
+      running.value = -1;
+    }
+  } else {
+    running.value = -1;
+    showStatus(t("status.fix_failed"), -1);
+  }
+  return ok;
+}
+
+// 修复按钮：尝试自动安装缺失依赖
+async function fixSystem() {
+  loading.value = true;
+  try {
+    await syscheck_and_fix();
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function startDSHService() {
   loading.value = true;
   try {
+    if (!(await syscheck())) {
+      return;
+    }
     await invoke("start_dsh_service");
     await waitUntilRunning();
   } catch (error) {
@@ -66,7 +115,7 @@ async function waitUntilRunning(timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await invoke("is_dsh_service_running")) {
-      running.value = true;
+      running.value = 1;
       showStatus(t("status.started"));
       return;
     }
@@ -79,7 +128,7 @@ async function stopDSHService() {
   loading.value = true;
   try {
     await invoke("kill_dsh_service");
-    running.value = false;
+    running.value = 0;
     showStatus(t("status.stopped"));
   } catch (error) {
     showStatus(t("status.stop_failed", { error }), 4000);
@@ -99,9 +148,10 @@ const close = () => appWindow.close();
     <span class="title">DSH Desktop</span>
 
     <div class="header-controls">
-      <span class="dot" :class="{ online: running }" :title="t('header.service_status')"></span>
+      <span class="dot" :class="{ online: running === 1, failed: running === -1 }" :title="t('header.service_status')"></span>
       <button type="button" :disabled="loading" @click="startDSHService">{{ t("header.start") }}</button>
       <button type="button" :disabled="loading" @click="stopDSHService">{{ t("header.stop") }}</button>
+      <button v-if="running === -1" type="button" :disabled="loading" @click="fixSystem">{{ t("header.fix") }}</button>
       <span class="status" :class="{ 'is-hidden': !statusVisible }">{{ status }}</span>
     </div>
 
@@ -119,7 +169,7 @@ const close = () => appWindow.close();
   </header>
 
   <main class="container">
-    <div v-if="!running" class="launcher">
+    <div v-if="running !== 1" class="launcher">
       <img :src="flashIcon" class="flash-icon" alt="DSH" />
     </div>
     <iframe v-else :src="dsh_url" class="dsh-frame" />
@@ -231,6 +281,10 @@ const close = () => appWindow.close();
 
 .dot.online {
   background-color: #2ecc71;
+}
+
+.dot.failed {
+  background-color: #808080;
 }
 
 .win-control-buttons {
